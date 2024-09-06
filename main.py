@@ -1,3 +1,4 @@
+import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -11,6 +12,14 @@ import os
 
 class CourseSelector:
     def __init__(self, driver_path, url, account, password):
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
         self.service = Service(driver_path)
 
         chrome_options = webdriver.ChromeOptions()
@@ -56,9 +65,9 @@ class CourseSelector:
         alert = self.driver.switch_to.alert
         alert_text = alert.text
         if "Login Success" in alert_text:
-            print("登入成功")
+            self.logger.info("Login success")
         else:
-            print("登入失敗，Alert 文本:", alert_text)
+            self.logger.warning("Login failed", alert_text)
         alert.accept()
 
     def select_courses(self, year_value, dept_value, degree_value):
@@ -79,39 +88,57 @@ class CourseSelector:
         submit_button = self.driver.find_element(By.ID, 'Button1')
         submit_button.click()
 
-    def filter_courses(self, time_span='\n'):
+    def _filter_by_time_span(self, record, time_span):
+        """Filter a record based on the given time span."""
+        span_value = record.find_element(By.XPATH, './td[6]/span').text
+        return time_span in span_value
+
+    def _filter_by_course_name(self, record, course_name):
+        """Filter a record based on the given course name."""
+        actual_course_name = record.find_element(By.XPATH, './td[4]/a[1]').text
+        return course_name in actual_course_name if course_name else True
+
+    def _is_course_available(self, record):
+        """Check if the course has available slots."""
+        font_value = record.find_element(By.XPATH, './td[8]/font').text
+        comp_font_value = font_value.split('/')
+        return comp_font_value[0] != comp_font_value[1]
+    
+    def filter_courses(self, time_span='\n', course_name_exp=''):
+        """
+        Filter courses based on time span and/or course name.
+        
+        :param time_span: The desired time span for the course
+        :param course_name: The desired course name (or part of it)
+        :return: List of filtered courses
+        """
         self.driver.implicitly_wait(1)
         records = self.driver.find_elements(By.CSS_SELECTOR, "tr.record2, tr.hi_line")
         filtered_records = [record for index, record in enumerate(records) if index % 2 == 0]
-
-        print('課程數量：', len(filtered_records))
+        
+        self.logger.info(f'Total courses: {len(filtered_records)}')
+        
+        # Log all courses for debugging
         for record in filtered_records:
             span_value = record.find_element(By.XPATH, './td[6]/span').text
-            print('指定時段：', span_value)
             font_value = record.find_element(By.XPATH, './td[8]/font').text
-            print('人數：', font_value)
             course_name = record.find_element(By.XPATH, './td[4]/a[1]').text
-            print('課程名稱：', course_name)
-            print('---')
-
+            if time_span in span_value or course_name_exp in course_name:
+                self.logger.debug(f"Course: {course_name}, Time: {span_value}, Availability: {font_value}")
         
         results = []
         for record in filtered_records:
-            span_value = record.find_element(By.XPATH, './td[6]/span').text
-            if time_span not in span_value:
-                continue
-            font_value = record.find_element(By.XPATH, './td[8]/font').text
-            comp_font_value = font_value.split('/')
-
-            if comp_font_value[0] != comp_font_value[1]:
+            if (self._filter_by_time_span(record, time_span) and
+                self._filter_by_course_name(record, course_name_exp) and
+                self._is_course_available(record)):
+                
                 course_name = record.find_element(By.XPATH, './td[4]/a[1]').text
-                if "表隊專長訓練" in course_name:   # 排除表隊專長訓練
-                    continue
-                print('課程名稱：', course_name)
-                print('指定時段：', span_value)
-                print('人數：', font_value)
-                print('---')
+                span_value = record.find_element(By.XPATH, './td[6]/span').text
+                font_value = record.find_element(By.XPATH, './td[8]/font').text
+                
+                self.logger.info(f'Filtered Course: {course_name}, Time: {span_value}, Availability: {font_value}')
                 results.append([course_name, font_value, span_value])
+        
         return results
     
     def store_result(self, results):
@@ -130,31 +157,32 @@ class CourseSelector:
 # 使用方式
 
 def main():
+    logger = logging.getLogger(__name__)
     driver_path = '/Users/sean/chromedriver-mac-arm64/chromedriver'
     url = 'https://portalfun.yzu.edu.tw/cosSelect/index.aspx'
     #account = os.getenv('ACCOUNT')
     #password = os.getenv('PASSWORD')
 
-    
+
     selector = CourseSelector(driver_path, url, account, password)
     selector.open_page()
 
     check_code = selector.get_check_code()
     if check_code:
-        # print(f"CheckCode: {check_code}")
+        logger.debug(f"CheckCode: {check_code}")
 
         selector.login(check_code)
         # selector.select_courses('113,1  ', '904', '2') #興趣體育
         # results = selector.filter_courses()
         
         selector.select_courses(year_value='113,1  ', dept_value='700', degree_value='1')
-        results = selector.filter_courses(time_span="203")
+        results = selector.filter_courses(time_span="203", course_name_exp="基礎程式設計-C++實習")
 
 
         message_templet = selector.store_result(results)
         print(message_templet)
     else:
-        print("未能找到 CheckCode cookie")
+        logger.error("未能找到 CheckCode cookie")
 
     selector.close()
 
