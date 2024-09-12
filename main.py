@@ -102,6 +102,9 @@ class CourseSelector:
             course_name = record.find_element(By.XPATH, './td[4]/a[1]').text
             span_value = record.find_element(By.XPATH, './td[6]/span').text
             font_value = record.find_element(By.XPATH, './td[8]/font').text
+
+            if '代表隊專長訓練' in course_name:
+                continue
             
             if self._should_include_course(record, time_span, course_name_exp):
                 self.logger.info(f'Filtered Course: {course_name}, Time: {span_value}, Availability: {font_value}')
@@ -139,7 +142,7 @@ class CourseSelector:
             # if result[0] in f:
             #     continue
             # f.write(f"{result[0]} {result[1]} {result[2]}\n")
-            message_templet += "課程名稱：" + result[0] + "\n目前人數：" + result[1] + "\n時段：" + result[2] + "\n"
+            message_templet += "課程名稱：" + result[0] + "\n目前人數：" + result[1] + "\n時段：" + result[2] + "\n\n"
         return message_templet
 
     def close(self):
@@ -179,9 +182,11 @@ def main():
 
         if results:
             logger.info("有課程")
+            message_templet = selector.store_result(results)
+            logger.info(message_templet)
             send_email(
                 subject=f"{coures_name}課程有空位!!",
-                body="請盡快登入選課系統選課",
+                body=message_templet,
                 sender_email=config.args.sender_email,
                 password=config.args.sender_password,
                 receiver_email=config.args.receiver_email,
@@ -192,8 +197,6 @@ def main():
             selector.close()
             return
 
-        message_templet = selector.store_result(results)
-        logger.info(message_templet)
     else:
         logger.error("未能找到 CheckCode cookie")
 
