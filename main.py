@@ -137,11 +137,7 @@ class CourseSelector:
     
     def store_result(self, results):
         message_templet = """目前釋出名額有：\n"""
-        # with open('result.txt', 'r+') as f:
         for result in results:
-            # if result[0] in f:
-            #     continue
-            # f.write(f"{result[0]} {result[1]} {result[2]}\n")
             message_templet += "課程名稱：" + result[0] + "\n目前人數：" + result[1] + "\n時段：" + result[2] + "\n\n"
         return message_templet
 
